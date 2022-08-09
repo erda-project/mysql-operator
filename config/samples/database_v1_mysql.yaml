@@ -1,0 +1,7 @@
+apiVersion: database.erda.cloud/v1
+kind: Mysql
+metadata:
+  name: mysql-sample
+spec:
+  storageClassName: dice-local-volume
+  imagePullPolicy: Always

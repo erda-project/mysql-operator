@@ -1,0 +1,34 @@
+FROM registry.erda.cloud/retag/golang:1.17-buster AS builder
+
+WORKDIR /workspace
+
+COPY api/ api/
+COPY controllers/ controllers/
+COPY pkg/ pkg/
+COPY cmd/ cmd/
+COPY go.mod go.mod
+COPY go.sum go.sum
+RUN GOPROXY=https://goproxy.cn,direct CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o mylet ./cmd/mylet/
+
+FROM registry.erda.cloud/retag/mysql:5.7.38
+#FROM registry.erda.cloud/retag/mysql:8.0.29
+
+RUN rm -f /etc/localtime && \
+  ln -s /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+
+RUN sed -i -r 's/(deb|security).debian.org/mirror.sjtu.edu.cn/g' /etc/apt/sources.list && \
+  apt-get update && \
+  apt-get upgrade -y && \
+  apt-get install -y curl && \
+  curl -o /tmp/xtrabackup.deb http://erda-project.oss-cn-hangzhou.aliyuncs.com/erda-addons/percona-xtrabackup-24_2.4.26-1.buster_amd64.deb && \
+  apt-get install -y /tmp/xtrabackup.deb && \
+  rm -f /tmp/xtrabackup.deb && \
+  apt-get clean
+
+WORKDIR /
+COPY --from=builder /workspace/mylet .
+VOLUME /mydir
+EXPOSE 3306 33080
+USER mysql:mysql
+ENTRYPOINT []
+CMD ["/mylet"]

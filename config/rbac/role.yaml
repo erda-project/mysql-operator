@@ -1,0 +1,56 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: myctl-role
+rules:
+  - apiGroups:
+      - apps
+    resources:
+      - statefulsets
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - database.erda.cloud
+    resources:
+      - mysqls
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - database.erda.cloud
+    resources:
+      - mysqls/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - database.erda.cloud
+    resources:
+      - mysqls/status
+    verbs:
+      - get
+      - patch
+      - update
