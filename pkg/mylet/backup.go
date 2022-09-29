@@ -578,7 +578,8 @@ func (mylet *Mylet) ReadGtid() (gtid string, err error) {
 	p := "GTID of the last change"
 	i := strings.Index(s, p)
 	if i == -1 {
-		return "", fmt.Errorf("no gtid prefix")
+		// return "", fmt.Errorf("no gtid prefix")
+		return mylet.Read_binlog_pos()
 	}
 	s = s[i+len(p):]
 	i = strings.IndexByte(s, '\'')
@@ -602,7 +603,8 @@ func (mylet *Mylet) ReadGtid() (gtid string, err error) {
 	return strings.Join(a, ","), nil
 }
 
-func (mylet *Mylet) ReadGtid1() (gtid string, err error) {
+// TODO: multiline
+func (mylet *Mylet) Read_binlog_pos() (gtid string, err error) {
 	f, err := os.Open(filepath.Join(mylet.DataDir(), "xtrabackup_info"))
 	if err != nil {
 		return
@@ -618,7 +620,8 @@ func (mylet *Mylet) ReadGtid1() (gtid string, err error) {
 		}
 		if strings.TrimSpace(s[:i]) == "binlog_pos" {
 			a := strings.Split(s[i+1:], ",")
-			if len(a) != 3 {
+			if len(a) != 2 && //no gtid
+				len(a) != 3 {
 				err = fmt.Errorf("binlog_pos length %d", len(a))
 				return
 			}
