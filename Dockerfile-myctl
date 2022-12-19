@@ -12,12 +12,15 @@ RUN GOPROXY=https://goproxy.cn,direct CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go b
 
 FROM registry.erda.cloud/retag/debian:buster
 
-RUN rm -f /etc/localtime && \
-  ln -s /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+  echo Asia/Shanghai > /etc/timezone && \
   useradd cxr
 
-RUN sed -i -r 's/(deb|security).debian.org/mirror.sjtu.edu.cn/g' /etc/apt/sources.list && \
-  apt-get update && apt-get install -y curl && apt-get clean
+RUN sed -i -r 's/(deb|security).debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+  apt-get update && \
+  #apt-get upgrade -y && \
+  apt-get install -y curl && \
+  apt-get clean
 
 WORKDIR /
 COPY --from=builder /workspace/myctl .
