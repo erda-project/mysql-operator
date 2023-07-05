@@ -13,5 +13,5 @@ var (
 )
 
 func dup2(f *os.File, fd int) error {
-	return syscall.Dup2(int(f.Fd()), fd)
+	return syscall.Dup3(int(f.Fd()), fd, 0)
 }

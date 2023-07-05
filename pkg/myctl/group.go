@@ -156,6 +156,15 @@ func (g *MysqlGroup) Diff(mysql *v1.Mysql) error {
 
 	//TODO other changes
 
+	//just copy
+	spec := mysql.Spec.DeepCopy()
+	g.Spec.Labels = spec.Labels
+	g.Spec.Annotations = spec.Annotations
+	g.Spec.Affinity = spec.Affinity
+	g.Spec.Resources = spec.Resources
+	g.Spec.EnvFrom = spec.EnvFrom
+	g.Spec.Env = spec.Env
+
 	if changed > 0 {
 		if err := g.Validate(); err != nil {
 			return err

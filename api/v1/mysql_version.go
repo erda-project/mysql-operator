@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -59,6 +60,9 @@ func ParseVersion(s string) (v MysqlVersion, err error) {
 
 	switch v.Major {
 	case 5:
+		if runtime.GOARCH != "amd64" {
+			err = fmt.Errorf("%s major versoin unsupported: %s", runtime.GOARCH, s)
+		}
 		if v.Minor != 7 {
 			err = fmt.Errorf("minor version unsupported: %s", s)
 		} else if v.NoPatch {

@@ -33,6 +33,8 @@ func MutateSts(mysql *databasev1.Mysql, sts *appsv1.StatefulSet) {
 		annotations[k] = v
 	}
 
+	spec := mysql.Spec.DeepCopy()
+
 	sts.Spec = appsv1.StatefulSetSpec{
 		ServiceName: mysql.BuildName(databasev1.HeadlessSuffix),
 		Replicas:    pointer.Int32Ptr(int32(mysql.Spec.Size())),
@@ -80,7 +82,8 @@ func MutateSts(mysql *databasev1.Mysql, sts *appsv1.StatefulSet) {
 								MountPath: "/mydir",
 							},
 						},
-						Env: NewEnv(
+						EnvFrom: spec.EnvFrom,
+						Env: append(spec.Env, NewEnv(
 							corev1.EnvVar{
 								Name:  "MYCTL_ADDR",
 								Value: mysql.Spec.MyctlAddr,
@@ -93,7 +96,7 @@ func MutateSts(mysql *databasev1.Mysql, sts *appsv1.StatefulSet) {
 								Name:  "HTTP_ADDR",
 								Value: ":" + strconv.Itoa(mysql.Spec.MyletPort),
 							},
-						),
+						)...),
 						/*TODO
 						Lifecycle: &corev1.Lifecycle{
 							PostStart: &corev1.LifecycleHandler{

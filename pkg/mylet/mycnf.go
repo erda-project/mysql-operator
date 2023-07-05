@@ -10,7 +10,8 @@ mysqlx = OFF
 {{- end}}
 #skip_name_resolve = ON
 #skip-host-cache
-max_allowed_packet = 128M
+max_connections = 2048
+max_allowed_packet = 256M
 explicit_defaults_for_timestamp = ON
 
 super_read_only = ON
