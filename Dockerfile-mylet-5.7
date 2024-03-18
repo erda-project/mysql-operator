@@ -1,4 +1,4 @@
-FROM registry.erda.cloud/retag/golang:1.17-buster AS builder
+FROM registry.erda.cloud/erda-x/golang:1.17 AS builder
 
 WORKDIR /workspace
 
@@ -8,17 +8,29 @@ COPY pkg/ pkg/
 COPY cmd/ cmd/
 COPY go.mod go.mod
 COPY go.sum go.sum
-RUN GOPROXY=https://goproxy.cn,direct CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o mylet ./cmd/mylet/
+RUN CGO_ENABLED=0 go build -a -o mylet ./cmd/mylet/
 
-FROM registry.erda.cloud/retag/mysql:5.7.38
+FROM registry.erda.cloud/retag/amd64/mysql:5.7.38
 
-RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
-  echo Asia/Shanghai > /etc/timezone
+LABEL org.opencontainers.image.authors="jingtao@alibaba-inc.com"
 
-RUN sed -i -r 's/(deb|security).debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+RUN sed -i -r 's/(deb|security).debian.org/mirrors.163.com/g' /etc/apt/sources.list && \
   apt-get update && \
   #apt-get upgrade -y && \
-  apt-get install -y curl && \
+  apt-get install -y locales vim net-tools && \
+  apt-get clean
+
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+  echo Asia/Shanghai > /etc/timezone && \
+  echo zh_CN.GB18030 GB18030,zh_CN.GBK GBK,zh_CN.GB2312 GB2312 | tr , '\n' > /etc/locale.gen && \
+  # rubbish utf8
+  echo zh_CN.UTF-8 UTF-8,en_US.UTF-8 UTF-8 | tr , '\n' >> /etc/locale.gen && \
+  locale-gen && \
+  echo LANG=en_US.UTF-8 > /etc/locale.conf
+
+ENV LANG=en_US.UTF-8
+
+RUN apt-get install -y curl && \
   curl -o /tmp/xtrabackup.deb http://erda-project.oss-cn-hangzhou.aliyuncs.com/erda-addons/percona-xtrabackup-24_2.4.26-1.buster_amd64.deb && \
   apt-get install -y /tmp/xtrabackup.deb && \
   rm -f /tmp/xtrabackup.deb && \

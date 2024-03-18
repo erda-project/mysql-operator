@@ -29,13 +29,14 @@ spec:
       labels:
         addon: myctl
     spec:
+      imagePullSecrets: ${IMAGE_PULL_SECRETS}
       containers:
         - command:
             - /myctl
           args:
             - --leader-elect
-          image: registry.erda.cloud/erda-addons/myctl:v1.0
-          imagePullPolicy: Always
+          image: ${IMAGE_REGISTRY}/erda-addons/myctl:v1.1
+          imagePullPolicy: ${IMAGE_PULL_POLICY}
           env:
             - name: HTTP_ADDR
               value: ":33081"

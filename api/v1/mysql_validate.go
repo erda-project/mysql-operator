@@ -2,6 +2,7 @@ package v1
 
 import (
 	"fmt"
+	"runtime"
 	"strconv"
 
 	"github.com/google/uuid"
@@ -20,7 +21,11 @@ const (
 
 func (r *Mysql) Default() {
 	if r.Spec.Version == "" {
-		r.Spec.Version = "v5.7"
+		if runtime.GOARCH == "amd64" {
+			r.Spec.Version = "v5.7"
+		} else {
+			r.Spec.Version = "v8.0"
+		}
 	}
 
 	if r.Spec.PrimaryMode == "" {
@@ -115,16 +120,15 @@ func (r *Mysql) Default() {
 		r.Spec.ShortHeadlessHost = r.BuildName(HeadlessSuffix) + "." + r.Namespace
 	}
 
-	if r.Spec.EnableExporter {
-		if r.Spec.ExporterImage == "" {
-			r.Spec.ExporterImage = "registry.erda.cloud/retag/mysqld-exporter:v0.14.0"
-		}
-		if r.Spec.ExporterUsername == "" {
-			r.Spec.ExporterUsername = "exporter"
-		}
-		if r.Spec.ExporterPassword == "" {
-			r.Spec.ExporterPassword = GeneratePassword(29)
-		}
+	r.Spec.EnableExporter = true
+	if r.Spec.ExporterImage == "" {
+		r.Spec.ExporterImage = "registry.erda.cloud/retag/mysqld-exporter:v0.14.0"
+	}
+	if r.Spec.ExporterUsername == "" {
+		r.Spec.ExporterUsername = "exporter"
+	}
+	if r.Spec.ExporterPassword == "" {
+		r.Spec.ExporterPassword = GeneratePassword(29)
 	}
 }
 
