@@ -43,10 +43,18 @@ log_replica_updates = ON
 {{- if .IsReplica}}
 sync_binlog = 0
 
+
 #slave-parallel-type = LOGICAL_CLOCK
 #slave-parallel-workers = 4
 {{- else}}
 sync_binlog = 1
+
+{{- if ne .Mysql.Status.Version.Major 5}}
+binlog_expire_logs_seconds = 604800
+{{- else}}
+expire_logs_days = 7
+{{- end}}
+max_binlog_size = 1G
 
 #binlog_group_commit_sync_delay = 100
 #binlog_group_commit_sync_no_delay_count = 10
