@@ -4,18 +4,24 @@ import (
 	"fmt"
 	"strconv"
 
-	databasev1 "github.com/erda-project/mysql-operator/api/v1"
-	"github.com/erda-project/mysql-operator/pkg/mylet"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
+
+	databasev1 "github.com/erda-project/mysql-operator/api/v1"
+	"github.com/erda-project/mysql-operator/pkg/mylet"
 )
 
 var (
 	PersistentVolumeBlock      = corev1.PersistentVolumeBlock
 	PersistentVolumeFilesystem = corev1.PersistentVolumeFilesystem
+)
+
+const (
+	LabelMonitorErdaCloudEnabled  = "monitor.erda.cloud/enabled"
+	LabelMonitorErdaCloudExporter = "monitor.erda.cloud/exporter"
 )
 
 func MutateSts(mysql *databasev1.Mysql, sts *appsv1.StatefulSet) {
@@ -254,6 +260,7 @@ func NewEnv(a ...corev1.EnvVar) []corev1.EnvVar {
 
 func MutateSvc(mysql *databasev1.Mysql, svc *corev1.Service, x string) {
 	svc.Labels = mysql.NewLabels()
+	mysql.MergeLabels(svc)
 	svc.Spec = corev1.ServiceSpec{
 		Selector: mysql.NewLabels(),
 		Ports: []corev1.ServicePort{
@@ -284,9 +291,15 @@ func MutateSvc(mysql *databasev1.Mysql, svc *corev1.Service, x string) {
 	switch x {
 	case databasev1.HeadlessSuffix:
 		svc.Spec.ClusterIP = corev1.ClusterIPNone
+		enableMonitor(svc)
 	case "write":
 		svc.Spec.Selector["statefulset.kubernetes.io/pod-name"] = mysql.SoloName(*mysql.Status.WriteId)
 	case "read":
 		svc.Spec.Selector["statefulset.kubernetes.io/pod-name"] = mysql.SoloName(*mysql.Status.ReadId)
 	}
+}
+
+func enableMonitor(svc *corev1.Service) {
+	svc.Labels[LabelMonitorErdaCloudEnabled] = "true"
+	svc.Labels[LabelMonitorErdaCloudExporter] = "true"
 }
