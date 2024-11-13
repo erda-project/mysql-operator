@@ -1,4 +1,4 @@
-FROM registry.erda.cloud/retag/golang:1.17-buster AS builder
+FROM registry.erda.cloud/erda-x/golang:1.22 AS builder
 
 WORKDIR /workspace
 
