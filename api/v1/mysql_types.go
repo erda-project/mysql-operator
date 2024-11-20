@@ -232,6 +232,14 @@ func (r *Mysql) BuildName(suffix string) string {
 	return r.Name + "-" + suffix
 }
 
+func (r *Mysql) MergeLabels(svc *corev1.Service) {
+	for key, value := range r.Spec.Labels {
+		if _, exist := svc.Labels[key]; !exist {
+			svc.Labels[key] = value
+		}
+	}
+}
+
 func (spec *MysqlSpec) Size() int {
 	return spec.Primaries + *spec.Replicas
 }
