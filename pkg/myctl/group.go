@@ -154,6 +154,9 @@ func (g *MysqlGroup) Diff(mysql *v1.Mysql) error {
 		g.Spec.ExporterPassword = mysql.Spec.ExporterPassword
 	}
 
+	// 同步 image 字段，确保 CRD 变更能生效
+	g.Spec.Image = mysql.Spec.Image
+
 	//TODO other changes
 
 	//just copy

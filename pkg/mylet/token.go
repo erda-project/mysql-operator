@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/erda-project/mysql-operator/api/v1"
 	"github.com/cxr29/tiny"
+	v1 "github.com/erda-project/mysql-operator/api/v1"
 )
 
 var RandId = time.Now().UnixNano() // 启动时间、冲突检测

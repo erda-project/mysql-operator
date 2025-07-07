@@ -146,10 +146,7 @@ func (ctl *Myctl) _Report(ctx *tiny.Context) {
 	for _, s := range states {
 		s.YellowTime = now
 		g.States[s.StateKey] = s
-	}
-
-	if !t.Myctl {
-		g.Status.Solos[t.Id].Status.Hang = v.Hang
+		log.Infof("[_Report] 收到上报: FromId=%d ToId=%d ErrorCount=%d GreenTime=%v RedTime=%v LastError=%s", s.FromId, s.ToId, s.ErrorCount, s.GreenTime, s.RedTime, s.LastError)
 	}
 
 	sizeSpec := mylet.NewSizeSpec(g.Mysql)
@@ -175,6 +172,7 @@ func (g *MysqlGroup) Check() error {
 	n := g.Spec.Size()
 	for i := 0; i < n; i++ {
 		red, yellow, green := g.Color(i)
+		log.Infof("[Check] color统计: id=%d red=%d yellow=%d green=%d", i, red, yellow, green)
 		c := v1.Green
 		if red+yellow > green {
 			c = v1.Red
@@ -184,6 +182,7 @@ func (g *MysqlGroup) Check() error {
 			nYellow++
 		}
 		if g.Status.Solos[i].Status.Color != c {
+			log.Infof("[Check] id=%d 状态变更: %s -> %s", i, g.Status.Solos[i].Status.Color, c)
 			g.Status.Solos[i].Status.Color = c
 			change++
 		}
@@ -195,6 +194,7 @@ func (g *MysqlGroup) Check() error {
 		c = v1.Yellow
 	}
 	if g.Status.Color != c {
+		log.Infof("[Check] 集群 color 变更: %s -> %s", g.Status.Color, c)
 		g.Status.Color = c
 		change++
 	}
@@ -210,7 +210,7 @@ func (g *MysqlGroup) Check() error {
 	primaryId := *g.Spec.PrimaryId
 	red, yellow, green := g.Color(primaryId)
 	if red+yellow > 0 {
-		log.Infoln(g.Name, "primary", primaryId, "red", red, "yellow", yellow, "green", green)
+		log.Infof("[Check] 主节点 color: id=%d red=%d yellow=%d green=%d", primaryId, red, yellow, green)
 	}
 
 	writeId := *g.Status.WriteId
@@ -251,6 +251,7 @@ func (g *MysqlGroup) Check() error {
 		}
 	}
 	if newId != -1 {
+		log.Infof("[Check] 触发主切换: %d -> %d", primaryId, newId)
 		g.SwitchPrimary(newId)
 	}
 

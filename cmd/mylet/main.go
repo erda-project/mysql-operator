@@ -3,9 +3,9 @@ package main
 import (
 	"os"
 
-	"github.com/cxr29/log"
 	v1 "github.com/erda-project/mysql-operator/api/v1"
 	"github.com/erda-project/mysql-operator/pkg/mylet"
+	log "github.com/sirupsen/logrus"
 )
 
 func main() {
@@ -17,7 +17,9 @@ func main() {
 	groupToken := os.Getenv("GROUP_TOKEN")
 
 	mylet, err := mylet.Fetch(myctlAddr, soloName, groupToken)
-	log.ErrFatal(err, "Fetch")
+	if err != nil {
+		log.Fatal("Fetch", err)
+	}
 
 	mylet.Run()
 }

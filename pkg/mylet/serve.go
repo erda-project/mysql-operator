@@ -2,6 +2,7 @@ package mylet
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,10 +15,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cxr29/log"
 	"github.com/cxr29/tiny"
 	"github.com/cxr29/tiny/alog"
 	v1 "github.com/erda-project/mysql-operator/api/v1"
+	log "github.com/sirupsen/logrus"
 )
 
 func Fetch(myctlAddr, soloName, groupToken string) (*Mylet, error) {
@@ -83,38 +84,168 @@ func Fetch(myctlAddr, soloName, groupToken string) (*Mylet, error) {
 		return nil, fmt.Errorf("return error: %s", v.Error)
 	}
 
+	// 调试：打印获取到的 spec 和 status
+	log.Infof("[Fetch] Got Spec: %+v", v.Data.Spec)
+	log.Infof("[Fetch] Got Status: %+v", v.Data.Status)
+
+	mysqlSolo := v.Data.Status.Solos[id]
+
 	mylet := &Mylet{
 		Mysql:      v.Data,
 		MysqlSolo:  v.Data.Status.Solos[id],
 		ExitChan:   make(chan struct{}, 1),
 		SwitchChan: make(chan int, 1),
+		Spec:       &mysqlSolo.Spec,
+		hangCount:  0, // Initialize hangCount
+	}
+
+	restartLimitStr := os.Getenv("MYSQL_RESTART_LIMIT")
+	if restartLimit, err := strconv.Atoi(restartLimitStr); err == nil && restartLimit > 0 {
+		mylet.RestartLimit = restartLimit
+	} else {
+		// default restart limit
+		mylet.RestartLimit = 5
 	}
 
 	return mylet, nil
 }
 
+// reapZombiesLoop 定期回收所有 defunct（僵尸）子进程，防止进程表堆积僵尸进程。
+// 这是极端情况下的兜底措施，正常情况下 Go runtime 会自动 wait 掉子进程。
+func reapZombiesLoop() {
+	for {
+		var ws syscall.WaitStatus
+		var ru syscall.Rusage
+		// -1 表示回收任意子进程，WNOHANG 表示非阻塞
+		pid, err := syscall.Wait4(-1, &ws, syscall.WNOHANG, &ru)
+		for pid > 0 {
+			log.Warnf("reaped zombie process: pid=%d, status=%v", pid, ws)
+			pid, err = syscall.Wait4(-1, &ws, syscall.WNOHANG, &ru)
+		}
+		// ECHILD 表示当前没有可回收的子进程
+		if err != nil && err != syscall.ECHILD {
+			log.Warnf("wait4 error: %v", err)
+		}
+		// 每 5 秒检查一次
+		time.Sleep(5 * time.Second)
+	}
+}
+
+// CollectLocalStatus 采集本地 MySQL 实例的状态，组装为 MysqlSoloStatus
+// 注意：id 只在启动/Fetch 阶段解析一次，后续直接用 mylet.Spec.Id
+func (mylet *Mylet) CollectLocalStatus() v1.MysqlSoloStatus {
+	status := v1.MysqlSoloStatus{}
+	id := mylet.Spec.Id // id 直接取自 Spec
+	dsn := fmt.Sprintf("%s:%s%d@tcp(localhost:%d)/mysql",
+		mylet.Mysql.Spec.LocalUsername, mylet.Mysql.Spec.LocalPassword, id, mylet.Spec.Port)
+	db, err := sql.Open("mysql", dsn)
+	if err == nil {
+		defer db.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		err = db.PingContext(ctx)
+		if err == nil {
+			status.Color = v1.Green
+			mylet.hangCount = 0 // 探测成功，重置 hang
+		} else {
+			status.Color = v1.Red
+			mylet.hangCount++
+		}
+	} else {
+		status.Color = v1.Red
+		mylet.hangCount++
+	}
+
+	log.Infof("[CollectLocalStatus] id=%d, color=%s", id, status.Color)
+	return status
+}
+
+// 采集本地状态并组装上报结构体，id 直接用 mylet.Spec.Id
+func (mylet *Mylet) CollectReport() *MysqlReport {
+	localStatus := mylet.CollectLocalStatus()
+	id := mylet.Spec.Id // id 直接取自 Spec
+	state := struct {
+		FromId int    `json:"fromId"`
+		ToId   int    `json:"toId"`
+		Color  string `json:"color"`
+	}{
+		FromId: id,
+		ToId:   id,
+		Color:  localStatus.Color,
+	}
+	stateJson, _ := json.Marshal(state)
+	mr := &MysqlReport{
+		Name:     mylet.Spec.Name,
+		SizeSpec: NewSizeSpec(mylet.Mysql),
+		States:   []json.RawMessage{stateJson},
+	}
+	log.Infof("[CollectReport] Name=%s, id=%d, color=%s, SizeSpec=%+v", mr.Name, id, localStatus.Color, mr.SizeSpec)
+	return mr
+}
+
 func (mylet *Mylet) Run() {
+	// 启动僵尸进程回收协程，防止 mysqld 被 kill -9 后变成 defunct
+	go reapZombiesLoop()
+	log.Info("reapZombiesLoop started")
+
 	err := mylet.Configure()
-	log.ErrFatal(err, "Configure")
+	if err != nil {
+		log.Fatal("Configure", err)
+	}
 
 	dir := mylet.DataDir()
 	empty, err := IsEmpty(dir)
-	log.ErrFatal(err, "IsEmpty")
+	if err != nil {
+		log.Fatal("IsEmpty", err)
+	}
 	if empty {
 		if mylet.Spec.Id == 0 {
 			err = mylet.Initialize()
-			log.ErrFatal(err, "Initialize")
+			if err != nil {
+				log.Fatal("Initialize", err)
+			}
 		} else {
 			err = mylet.FetchAndPrepare()
-			log.ErrFatal(err, "FetchAndPrepare")
+			if err != nil {
+				log.Fatal("FetchAndPrepare", err)
+			}
 		}
 	}
 
+	// 定时上报 goroutine
 	go func() {
-		log.ErrError(mylet.Start(), "Start")
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-mylet.ExitChan:
+				return
+			case <-ticker.C:
+				report := mylet.CollectReport()
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				result, err := mylet.SendReport(ctx, report)
+				cancel()
+				if err != nil {
+					log.Errorf("SendReport failed: %v", err)
+					continue
+				}
+				if mylet.NeedReload(result.SizeSpec) {
+					if err := mylet.Reload(result.SizeSpec); err != nil {
+						log.Errorf("Reload failed: %v", err)
+					}
+				}
+			}
+		}
+	}()
+
+	go func() {
+		err = mylet.Start()
+		if err != nil {
+			log.Error("Start", err)
+		}
 		syscall.Kill(syscall.Getpid(), syscall.SIGINT)
 		time.Sleep(time.Second)
-		log.Infoln("Exit")
+		log.Info("Exit")
 		os.Exit(0)
 	}()
 
@@ -194,8 +325,8 @@ func (mylet *Mylet) _DownloadBackup(ctx *tiny.Context) {
 
 	if s == "replication" {
 		a, err := mylet.GetCompresses()
-		log.ErrError(err, "get compresses")
 		if err != nil {
+			log.Error("get compresses", err)
 			ctx.InternalServerError()
 			return
 		}
@@ -203,8 +334,8 @@ func (mylet *Mylet) _DownloadBackup(ctx *tiny.Context) {
 		i := len(a) - 1
 		if i == -1 || time.Since(a[i]) > Day {
 			a, err = mylet.GetBackups()
-			log.ErrError(err, "get backups")
 			if err != nil {
+				log.Error("get backups", err)
 				ctx.InternalServerError()
 				return
 			}
@@ -212,16 +343,16 @@ func (mylet *Mylet) _DownloadBackup(ctx *tiny.Context) {
 			i = len(a) - 1
 			if i == -1 || time.Since(a[i]) > Day {
 				_, err = mylet.FullBackup()
-				log.ErrError(err, "full backup")
 				if err != nil {
+					log.Error("full backup", err)
 					ctx.InternalServerError()
 					return
 				}
 			}
 
 			f, err = mylet.CompressLastBackup()
-			log.ErrError(err, "compress last backup")
 			if err != nil {
+				log.Error("compress last backup", err)
 				ctx.InternalServerError()
 				return
 			}
@@ -253,8 +384,8 @@ func (mylet *Mylet) _DownloadBackup(ctx *tiny.Context) {
 			}
 
 			f, err = mylet.CompressBackup(d)
-			log.ErrError(err, "compress backup")
 			if err != nil {
+				log.Error("compress backup", err)
 				ctx.InternalServerError()
 				return
 			}
@@ -292,7 +423,7 @@ func (mylet *Mylet) _Backup(ctx *tiny.Context) {
 	if incremental {
 		a, err := mylet.GetBackups()
 		if err != nil {
-			log.Errorln("get backups", err)
+			log.Error("get backups", err)
 			ctx.WriteError(err)
 			return
 		}
@@ -300,7 +431,7 @@ func (mylet *Mylet) _Backup(ctx *tiny.Context) {
 		if i := len(a) - 1; i == -1 {
 			bt, err = mylet.FullBackup()
 			if err != nil {
-				log.Errorln("full backup", err)
+				log.Error("full backup", err)
 				ctx.WriteError(err)
 				return
 			}
@@ -310,14 +441,14 @@ func (mylet *Mylet) _Backup(ctx *tiny.Context) {
 
 		inc, err = mylet.IncrementalBackup(bt)
 		if err != nil {
-			log.Errorln("incremental backup", filepath.Base(mylet.GetBackupDir(bt)), err)
+			log.Error("incremental backup", filepath.Base(mylet.GetBackupDir(bt)), err)
 			ctx.WriteError(err)
 			return
 		}
 	} else {
 		bt, err = mylet.FullBackup()
 		if err != nil {
-			log.Errorln("full backup", err)
+			log.Error("full backup", err)
 			ctx.WriteError(err)
 			return
 		}
@@ -327,7 +458,7 @@ func (mylet *Mylet) _Backup(ctx *tiny.Context) {
 		d := mylet.GetBackupDir(bt)
 		_, err = mylet.CompressBackup(d)
 		if err != nil {
-			log.Errorln("compress backup", filepath.Base(d), err)
+			log.Error("compress backup", filepath.Base(d), err)
 			ctx.WriteError(err)
 			return
 		}
