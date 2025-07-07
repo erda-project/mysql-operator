@@ -27,7 +27,6 @@ type MysqlReport struct {
 	Name string
 	SizeSpec
 	States []json.RawMessage
-	Hang   int
 }
 type ReportResult struct {
 	ReceiveTime time.Time
@@ -54,10 +53,10 @@ type MysqlState struct {
 	ErrorCount int
 }
 
-func (let *Mylet) SendReport(ctx context.Context, r *MysqlReport) error {
+func (let *Mylet) SendReport(ctx context.Context, r *MysqlReport) (ReportResult, error) {
 	b, err := json.Marshal(r)
 	if err != nil {
-		return err
+		return ReportResult{}, err
 	}
 
 	u := url.URL{
@@ -68,7 +67,7 @@ func (let *Mylet) SendReport(ctx context.Context, r *MysqlReport) error {
 
 	req, err := http.NewRequestWithContext(ctx, "POST", u.String(), bytes.NewReader(b))
 	if err != nil {
-		return err
+		return ReportResult{}, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -76,17 +75,17 @@ func (let *Mylet) SendReport(ctx context.Context, r *MysqlReport) error {
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		return ReportResult{}, err
 	}
 	defer res.Body.Close()
 
 	b, err = io.ReadAll(res.Body)
 	if err != nil {
-		return err
+		return ReportResult{}, err
 	}
 
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("status code %d, body: %s", res.StatusCode, string(b))
+		return ReportResult{}, fmt.Errorf("status code %d, body: %s", res.StatusCode, string(b))
 	}
 
 	var v struct {
@@ -95,14 +94,14 @@ func (let *Mylet) SendReport(ctx context.Context, r *MysqlReport) error {
 	}
 	err = json.Unmarshal(b, &v)
 	if err != nil {
-		return err
+		return ReportResult{}, err
 	}
 
 	if v.Error != nil {
-		return fmt.Errorf("return error: %s", v.Error)
+		return ReportResult{}, fmt.Errorf("return error: %s", v.Error)
 	}
 
-	return let.Reload(v.Data.SizeSpec)
+	return v.Data, nil
 }
 
 func (let *Mylet) Reload(ss SizeSpec) error {
@@ -166,4 +165,13 @@ func NewSizeSpec(mysql *v1.Mysql) SizeSpec {
 		PrimaryId:   *mysql.Spec.PrimaryId,
 		AutoSwitch:  *mysql.Spec.AutoSwitch,
 	}
+}
+
+func (let *Mylet) NeedReload(remote SizeSpec) bool {
+	local := NewSizeSpec(let.Mysql)
+	return local.PrimaryMode != remote.PrimaryMode ||
+		local.Primaries != remote.Primaries ||
+		local.Replicas != remote.Replicas ||
+		local.PrimaryId != remote.PrimaryId ||
+		local.AutoSwitch != remote.AutoSwitch
 }

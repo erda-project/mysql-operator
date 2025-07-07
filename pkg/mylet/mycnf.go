@@ -35,6 +35,12 @@ enforce_gtid_consistency = ON
 binlog_format = ROW
 log_bin = {{.Spec.Name}}-bin
 log_error = {{.Spec.Name}}.err
+## 日志过期时间,包括二进制日志(过期自动删除)
+expire_logs_days = 7
+## 指定每个二进制日志文件的最大大小
+max_binlog_size = 1G
+## 指定在写入二进制日志之前，用于缓存事务的内存大小
+max_binlog_cache_size = 512M
 {{- if eq .Mysql.Status.Version.Major 5}}
 log_slave_updates = ON
 {{- else}}

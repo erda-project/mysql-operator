@@ -12,7 +12,8 @@ RUN CGO_ENABLED=0 go build -a -o myctl ./cmd/myctl/
 
 FROM registry.erda.cloud/erda-x/debian:11
 
-RUN apt-get update && apt-get install -y curl && apt-get clean
+RUN sed -i 's@http://mirrors.163.com@http://mirrors.aliyun.com@g' /etc/apt/sources.list && \
+    apt-get update && apt-get install -y curl && apt-get clean
 
 WORKDIR /
 COPY --from=builder /workspace/myctl .

@@ -36,7 +36,10 @@ func (g *MysqlGroup) Color(id int) (red, yellow, green int) {
 			}
 		}
 	}
-	yellow = (g.Spec.Size() + MyctlReplicas) - green - red
+	yellow = g.Spec.Size() - green - red
+	if yellow < 0 {
+		yellow = 0
+	}
 	return
 }
 

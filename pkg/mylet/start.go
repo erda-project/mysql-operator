@@ -2,15 +2,17 @@ package mylet
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/cxr29/log"
 	v1 "github.com/erda-project/mysql-operator/api/v1"
+	log "github.com/sirupsen/logrus"
 	"k8s.io/utils/pointer"
 )
 
@@ -73,197 +75,173 @@ func IndexNotDigit(s string) int {
 	return -1
 }
 
+func (mylet *Mylet) cleanupStalePidAndSocket() error {
+	datadir := mylet.DataDir()
+	patterns := []string{
+		filepath.Join(datadir, "*.pid"),
+		filepath.Join(datadir, "*.sock"),
+		filepath.Join(datadir, "*.sock.lock"),
+	}
+	for _, pattern := range patterns {
+		files, _ := filepath.Glob(pattern)
+		for _, f := range files {
+			err := os.Remove(f)
+			if err == nil {
+				log.Infof("清理残留文件: %s", f)
+			}
+		}
+	}
+	return nil
+}
+
 func (mylet *Mylet) Start() error {
 	mylet.Lock()
 	if mylet.Running {
 		mylet.Unlock()
-		return fmt.Errorf("running")
-	} else {
-		mylet.Running = true
+		return fmt.Errorf("already running")
 	}
+	mylet.Running = true
 	mylet.Unlock()
 
-	cmd := mylet.Mysqld(context.Background())
-	err := cmd.Start()
 	defer func() {
-		if cmd.Process != nil {
-			if cmd.ProcessState == nil || !cmd.ProcessState.Exited() {
-				err := cmd.Process.Signal(syscall.SIGTERM)
-				log.ErrError(err, "stop mysqld")
-			}
-			err := cmd.Wait()
-			log.ErrError(err, "wait mysqld")
-		}
-
 		mylet.Lock()
 		mylet.Running = false
 		mylet.Unlock()
 	}()
-	if err != nil {
-		return err
-	}
 
+	for {
+		select {
+		case <-mylet.ExitChan:
+			log.Info("mylet start loop exits")
+			return nil
+		default:
+		}
+
+		if mylet.restartCount >= mylet.RestartLimit {
+			err := fmt.Errorf("mysqld restart count exceeds the limit: %d", mylet.RestartLimit)
+			log.Error(err)
+			return err
+		}
+		if mylet.restartCount > 0 {
+			log.Infof("mysqld restart attempt %d...", mylet.restartCount)
+			time.Sleep(5 * time.Second)
+		}
+
+		if err := mylet.cleanupStalePidAndSocket(); err != nil {
+			log.Errorf("cleanup stale pid/socket files failed, aborting: %v", err)
+			return err
+		}
+
+		cmd := mylet.Mysqld(context.Background())
+		err := cmd.Start()
+		if err != nil {
+			log.Errorf("failed to start mysqld (retry %d/%d): %v", mylet.restartCount, mylet.RestartLimit, err)
+			mylet.restartCount++
+			continue
+		}
+
+		waitChan := make(chan error, 1)
+		go func() {
+			waitChan <- cmd.Wait()
+		}()
+
+		err = mylet.postStartChecks(cmd)
+		if err != nil {
+			log.Errorf("post-start checks failed (retry %d/%d): %v", mylet.restartCount, mylet.RestartLimit, err)
+			// a graceful shutdown
+			if cmd.Process != nil {
+				if errSignal := cmd.Process.Signal(syscall.SIGTERM); errSignal != nil {
+					log.Errorf("failed to send SIGTERM to mysqld after post-start failure (original error: %v): %v", err, errSignal)
+				}
+			}
+			<-waitChan // wait for it to exit
+			mylet.restartCount++
+			continue
+		}
+
+		log.Info("mysqld is running and passed initial checks, entering monitor loop")
+		mylet.restartCount = 0 // Reset restart count after a successful start
+
+		select {
+		case <-mylet.ExitChan:
+			log.Info("mylet exiting, stopping mysqld...")
+			if cmd.Process != nil {
+				if errSignal := cmd.Process.Signal(syscall.SIGTERM); errSignal != nil {
+					log.Errorf("failed to send SIGTERM to mysqld on exit: %v", errSignal)
+				}
+				<-waitChan
+			}
+			return nil
+		case err = <-waitChan:
+			log.Errorf("mysqld exited unexpectedly with error: %v. (retry %d/%d)", err, mylet.restartCount, mylet.RestartLimit)
+			mylet.restartCount++
+			mylet.LivenessProbe = false
+			mylet.ReadinessProbe = false
+			mylet.StartupProbe = false
+		}
+	}
+}
+
+func (mylet *Mylet) postStartChecks(cmd *exec.Cmd) error {
 	var version string
-	// var fixPasswordId bool
+	var err error
 
 	for i := 1; i <= MaxStartup; i++ {
-		log.Infoln("get mysqld version sleep 5 seconds", i)
+		// Check if the process exited prematurely
+		if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+			return fmt.Errorf("mysqld exited during startup with code %d", cmd.ProcessState.ExitCode())
+		}
+
+		log.Infof("get mysqld version sleep 5 seconds %d", i)
 		time.Sleep(Timeout5s)
 
 		version, err = mylet.GetMysqldVersion(mylet.Spec.Id)
-		// sourceId := *mylet.Spec.SourceId
-		// if AccessDenied(err) && sourceId != -1 {
-		// 	version, err = mylet.GetMysqldVersion(sourceId)
-		// 	if AccessDenied(err) {
-		// 		return fmt.Errorf("access denied for user '%s'@'localhost'", mylet.Mysql.Spec.LocalUsername)
-		// 	}
-		// 	fixPasswordId = err == nil
-		// }
-
-		log.ErrError(err, "get mysqld version")
+		if err != nil {
+			log.Errorf("get mysqld version: %v", err)
+		}
 		if err == nil {
 			break
 		}
-
-		if cmd.Process != nil && cmd.ProcessState != nil && cmd.ProcessState.Exited() {
-			//TODO fix socket error, access denied...
-			return fmt.Errorf("mysqld exited %d", cmd.ProcessState.ExitCode())
-		}
+	}
+	if err != nil {
+		return fmt.Errorf("failed to get mysqld version after max startups: %w", err)
 	}
 
 	mylet.StartupProbe = true
 
 	err = mylet.CheckVersion(version)
-	log.ErrError(err, "check version")
 	if err != nil {
+		log.Errorf("check version: %v", err)
 		return err
 	}
 
-	// if fixPasswordId {
-	// 	err = mylet.FixPasswordId()
-	// 	log.ErrError(err, "fix password id")
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// }
-
 	if mylet.IsPrimary() {
 		err = mylet.SetupPrimary()
-		log.ErrError(err, "setup primary")
 		if err != nil {
+			log.Errorf("setup primary: %v", err)
 			return err
 		}
-		log.Infoln("start primary mysqld", version)
+		log.Infof("start primary mysqld %s", version)
 
 		if mylet.Mysql.Spec.EnableExporter {
 			err = mylet.ExporterUser()
-			log.ErrError(err, "export user")
+			if err != nil {
+				log.Errorf("export user: %v", err)
+			}
 		}
 	} else {
 		err = mylet.SetupReplica()
-		log.ErrError(err, "setup replica")
 		if err != nil {
+			log.Errorf("setup replica: %v", err)
 			return err
 		}
-		log.Infoln("start replica mysqld", version)
+		log.Infof("start replica mysqld %s", version)
 	}
 
 	mylet.LivenessProbe = true
+	mylet.ReadinessProbe = true
 
-	hang := 0
-	timer := time.NewTicker(Timeout5s)
-	defer timer.Stop()
-	states := make(map[int]*MysqlState, mylet.Mysql.Spec.Size())
-
-	for {
-		select {
-		case <-mylet.ExitChan:
-			log.Infoln("start exit")
-			return nil
-		case newId := <-mylet.SwitchChan:
-			err = mylet.ChangePrimary(newId)
-			if err != nil {
-				return err
-			}
-		case <-timer.C:
-			mylet.Lock()
-			if hang > 0 {
-				log.Errorln("hang", hang)
-			}
-			hang++
-			mylet.Unlock()
-
-			go func() {
-				err = mylet.SelfCheck()
-				log.ErrError(err, "self check")
-				mylet.ReadinessProbe = err == nil
-
-				r := &MysqlReport{
-					Name:     mylet.Spec.Name,
-					SizeSpec: NewSizeSpec(mylet.Mysql),
-				}
-				defer func() {
-					ctx, cancel := context.WithTimeout(context.Background(), Timeout5s)
-					defer cancel()
-
-					err := mylet.SendReport(ctx, r)
-					if err != nil {
-						time.Sleep(100 * time.Millisecond)
-						err = mylet.SendReport(ctx, r)
-					}
-					log.ErrError(err, "send report")
-				}()
-
-				ctx, cancel := context.WithTimeout(context.Background(), Timeout5s)
-				defer cancel()
-
-				now := time.Now()
-				m := CrossCheck(ctx, mylet.Mysql)
-
-				mylet.Lock()
-				defer mylet.Unlock()
-
-				for id, err := range m {
-					v, ok := states[id]
-					if !ok {
-						v = &MysqlState{
-							StateKey: StateKey{
-								FromId: mylet.Spec.Id,
-								ToId:   id,
-							},
-						}
-						states[id] = v
-					}
-
-					if err == nil {
-						v.ErrorCount = 0
-						v.GreenTime = now
-					} else {
-						if v.ErrorCount%10 == 1 {
-							log.Errorln("from", mylet.Mysql.SoloName(v.FromId), "to", mylet.Mysql.SoloName(v.ToId), err)
-						}
-
-						v.ErrorCount++
-						v.RedTime = now
-						v.LastError = err.Error()
-					}
-
-					// Monotonic
-					v.GreenDuration = now.Sub(v.GreenTime)
-					v.RedDuration = now.Sub(v.RedTime)
-				}
-
-				for _, v := range states {
-					b, err := json.Marshal(v)
-					log.ErrError(err, "never")
-					r.States = append(r.States, json.RawMessage(b))
-				}
-
-				hang--
-				r.Hang = hang
-			}()
-		}
-	}
+	return nil
 }
 
 // TODO
@@ -481,7 +459,6 @@ func (mylet *Mylet) ChangePrimary(newId int) (err error) {
 
 	if mylet.Spec.Id == oldId {
 		err = mylet.StopPrimary()
-		log.ErrError(err, "stop primary")
 		if err != nil {
 			return err
 		}
@@ -490,7 +467,6 @@ func (mylet *Mylet) ChangePrimary(newId int) (err error) {
 	sourceId := *mylet.Spec.SourceId
 	if sourceId != -1 {
 		err = mylet.StopReplica()
-		log.ErrError(err, "stop replica")
 		if err != nil {
 			return err
 		}
@@ -508,10 +484,14 @@ func (mylet *Mylet) ChangePrimary(newId int) (err error) {
 
 	if mylet.IsPrimary() {
 		err = mylet.SetupPrimary()
-		log.ErrError(err, "setup primary")
+		if err != nil {
+			return err
+		}
 	} else {
 		err = mylet.SetupReplica()
-		log.ErrError(err, "setup replica")
+		if err != nil {
+			return err
+		}
 	}
 	return err
 }

@@ -16,7 +16,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cxr29/log"
+	log "github.com/sirupsen/logrus"
 )
 
 func IsEmpty(name string) (bool, error) {
@@ -93,7 +93,7 @@ func (mylet *Mylet) FetchAndPrepare() error {
 
 	// TODO
 	filename := res.Header.Get("Content-Disposition")
-	log.Infoln("download backup", filename)
+	log.Info("download backup", filename)
 
 	err = os.MkdirAll(t, 0755)
 	if err != nil {
@@ -180,9 +180,13 @@ func (mylet *Mylet) RenameRoot() error {
 
 	defer func() {
 		err := cmd.Process.Signal(syscall.SIGTERM)
-		log.ErrError(err, "stop local mysqld")
+		if err != nil {
+			log.Error("stop local mysqld", err)
+		}
 		err = cmd.Wait()
-		log.ErrError(err, "wait local mysqld")
+		if err != nil {
+			log.Error("wait local mysqld", err)
+		}
 	}()
 
 	dsn := fmt.Sprintf("root:@unix(%s)/mysql", socket)
@@ -210,7 +214,7 @@ func (mylet *Mylet) RenameRoot() error {
 	)
 
 	for i := 1; i <= 10; i++ {
-		log.Infoln("ping local mysqld sleep 5 seconds", i)
+		log.Info("ping local mysqld sleep 5 seconds", i)
 		time.Sleep(Timeout5s)
 
 		func() {
@@ -223,7 +227,9 @@ func (mylet *Mylet) RenameRoot() error {
 			}
 
 			_, err = db.ExecContext(ctx, strings.Join(query, "\n"))
-			log.ErrFatal(err, "rename root")
+			if err != nil {
+				log.Fatal("rename root", err)
+			}
 		}()
 
 		if err == nil {
@@ -251,9 +257,13 @@ func (mylet *Mylet) ChangeLocalPassword() error {
 
 	defer func() {
 		err := cmd.Process.Signal(syscall.SIGTERM)
-		log.ErrError(err, "stop local mysqld")
+		if err != nil {
+			log.Error("stop local mysqld", err)
+		}
 		err = cmd.Wait()
-		log.ErrError(err, "wait local mysqld")
+		if err != nil {
+			log.Error("wait local mysqld", err)
+		}
 	}()
 
 	dsn := fmt.Sprintf("%s:@unix(%s)/mysql", mylet.Mysql.Spec.LocalUsername, socket)
@@ -280,7 +290,7 @@ func (mylet *Mylet) ChangeLocalPassword() error {
 	)
 
 	for i := 1; i <= 10; i++ {
-		log.Infoln("ping local mysqld sleep 5 seconds", i)
+		log.Info("ping local mysqld sleep 5 seconds", i)
 		time.Sleep(Timeout5s)
 
 		func() {
@@ -293,7 +303,9 @@ func (mylet *Mylet) ChangeLocalPassword() error {
 			}
 
 			_, err = db.ExecContext(ctx, strings.Join(query, "\n"))
-			log.ErrFatal(err, "change local password")
+			if err != nil {
+				log.Fatal("change local password", err)
+			}
 		}()
 
 		if err == nil {
@@ -326,9 +338,13 @@ func (mylet *Mylet) InitDB() error {
 
 	defer func() {
 		err := cmd.Process.Signal(syscall.SIGTERM)
-		log.ErrError(err, "stop local mysqld")
+		if err != nil {
+			log.Error("stop local mysqld", err)
+		}
 		err = cmd.Wait()
-		log.ErrError(err, "wait local mysqld")
+		if err != nil {
+			log.Error("wait local mysqld", err)
+		}
 	}()
 
 	dsn := fmt.Sprintf("%s:%s%d@unix(%s)/mysql", mylet.Mysql.Spec.LocalUsername, mylet.Mysql.Spec.LocalPassword, mylet.Spec.Id, socket)
@@ -363,7 +379,7 @@ func (mylet *Mylet) InitDB() error {
 	)
 
 	for i := 1; i <= 10; i++ {
-		log.Infoln("ping local mysqld sleep 5 seconds", i)
+		log.Info("ping local mysqld sleep 5 seconds", i)
 		time.Sleep(Timeout5s)
 
 		func() {
@@ -376,7 +392,9 @@ func (mylet *Mylet) InitDB() error {
 			}
 
 			_, err = db.ExecContext(ctx, strings.Join(query, "\n"))
-			log.ErrFatal(err, "init db")
+			if err != nil {
+				log.Fatal("init db", err)
+			}
 		}()
 
 		if err == nil {

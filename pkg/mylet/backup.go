@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cxr29/log"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -29,9 +29,10 @@ const (
 
 /*
 name.date.time/
-							base
-							inc1
-							inc...
+
+	base
+	inc1
+	inc...
 */
 func (mylet *Mylet) GetBackupDir(t time.Time) string {
 	dir := mylet.Spec.Name + "." + t.Format(DatetimeLayout)
@@ -221,7 +222,7 @@ func (mylet *Mylet) FullBackup() (time.Time, error) {
 	}
 	dir = filepath.Join(dir, "base")
 
-	log.Infoln("start full backup", mylet.Spec.Name, dt)
+	log.Info("start full backup", mylet.Spec.Name, dt)
 
 	cmd := exec.CommandContext(ctx, "xtrabackup",
 		"--defaults-file="+mylet.MyCnf(),
@@ -243,9 +244,9 @@ func (mylet *Mylet) FullBackup() (time.Time, error) {
 		err = WriteBackupInfo(dir, now)
 	}
 	if err == nil {
-		log.Infoln("end full backup", mylet.Spec.Name, dt)
+		log.Info("end full backup", mylet.Spec.Name, dt)
 	} else {
-		log.Errorln("end full backup", mylet.Spec.Name, dt, err)
+		log.Error("end full backup", mylet.Spec.Name, dt, err)
 	}
 
 	return now, err
@@ -285,7 +286,7 @@ func (mylet *Mylet) IncrementalBackup(t time.Time) (int, error) {
 	dir = filepath.Join(dir, "inc"+strconv.Itoa(i))
 
 	now := time.Now()
-	log.Infoln("start incremental backup", mylet.Spec.Name, dt, i)
+	log.Info("start incremental backup", mylet.Spec.Name, dt, i)
 
 	cmd := exec.CommandContext(ctx, "xtrabackup",
 		"--defaults-file="+mylet.MyCnf(),
@@ -308,9 +309,9 @@ func (mylet *Mylet) IncrementalBackup(t time.Time) (int, error) {
 		err = WriteBackupInfo(dir, now)
 	}
 	if err == nil {
-		log.Infoln("end incremental backup", mylet.Spec.Name, dt, i)
+		log.Info("end incremental backup", mylet.Spec.Name, dt, i)
 	} else {
-		log.Errorln("end incremental backup", mylet.Spec.Name, dt, i, err)
+		log.Error("end incremental backup", mylet.Spec.Name, dt, i, err)
 	}
 
 	return i, err
@@ -506,9 +507,13 @@ func (mylet *Mylet) adjustBackup(id int, gtid string) error {
 
 	defer func() {
 		err := cmd.Process.Signal(syscall.SIGTERM)
-		log.ErrError(err, "stop local mysqld")
+		if err != nil {
+			log.Error("stop local mysqld", err)
+		}
 		err = cmd.Wait()
-		log.ErrError(err, "wait local mysqld")
+		if err != nil {
+			log.Error("wait local mysqld", err)
+		}
 	}()
 
 	dsn := fmt.Sprintf("%s:%s%d@unix(%s)/mysql", mylet.Mysql.Spec.LocalUsername, mylet.Mysql.Spec.LocalPassword, id, socket)
@@ -525,7 +530,7 @@ func (mylet *Mylet) adjustBackup(id int, gtid string) error {
 
 	query = append(query, "RESET MASTER;")
 	q := fmt.Sprintf("SET GLOBAL gtid_purged = '%s';", gtid)
-	log.Infoln(q)
+	log.Info(q)
 	query = append(query, q)
 
 	// q = fmt.Sprintf("ALTER USER '%s'@'%s' IDENTIFIED BY '%s%d';", mylet.Mysql.Spec.ReplicaUsername, mylet.Mysql.Spec.MyHosts(), mylet.Mysql.Spec.ReplicaPassword, mylet.Spec.Id)
@@ -544,7 +549,7 @@ func (mylet *Mylet) adjustBackup(id int, gtid string) error {
 	)
 
 	for i := 1; i <= 10; i++ {
-		log.Infoln("ping local mysqld sleep 5 seconds", i)
+		log.Info("ping local mysqld sleep 5 seconds", i)
 		time.Sleep(Timeout5s)
 
 		func() {
@@ -557,7 +562,9 @@ func (mylet *Mylet) adjustBackup(id int, gtid string) error {
 			}
 
 			_, err = db.ExecContext(ctx, strings.Join(query, "\n"))
-			log.ErrFatal(err, "adjust backup")
+			if err != nil {
+				log.Fatal("adjust backup", err)
+			}
 		}()
 
 		if err == nil {

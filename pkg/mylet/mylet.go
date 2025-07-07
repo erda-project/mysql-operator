@@ -5,25 +5,55 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"sync"
 
 	v1 "github.com/erda-project/mysql-operator/api/v1"
 )
 
+// Mylet is a sidecar for mysql container
 type Mylet struct {
 	sync.Mutex
+	sync.Once
 
 	Mysql *v1.Mysql
-	v1.MysqlSolo
+	Spec  *v1.MysqlSoloSpec
 
-	ReadinessProbe bool
+	Backing   string
+	MysqlSolo v1.MysqlSolo
+
+	Running        bool
 	LivenessProbe  bool
+	ReadinessProbe bool
 	StartupProbe   bool
 
-	Backing    string
-	Running    bool
-	ExitChan   chan struct{}
+	RestartLimit int
+	restartCount int
+
 	SwitchChan chan int
+	ExitChan   chan struct{}
+
+	hangCount int // 连续探测失败次数
+}
+
+// New creates a new Mylet
+func New(mysql *v1.Mysql, id int) (*Mylet, error) {
+	m := &Mylet{
+		Mysql:      mysql,
+		Spec:       &mysql.Spec.Solos[id],
+		SwitchChan: make(chan int, 1),
+		ExitChan:   make(chan struct{}),
+	}
+
+	restartLimitStr := os.Getenv("MYSQL_RESTART_LIMIT")
+	if restartLimit, err := strconv.Atoi(restartLimitStr); err == nil && restartLimit > 0 {
+		m.RestartLimit = restartLimit
+	} else {
+		// default restart limit
+		m.RestartLimit = 5
+	}
+
+	return m, nil
 }
 
 func (mylet *Mylet) BackupDir() string {

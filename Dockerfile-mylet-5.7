@@ -14,11 +14,11 @@ FROM registry.erda.cloud/retag/amd64/mysql:5.7.38
 
 LABEL org.opencontainers.image.authors="jingtao@alibaba-inc.com"
 
-RUN sed -i -r 's/(deb|security).debian.org/mirrors.163.com/g' /etc/apt/sources.list && \
-  apt-get update && \
-  #apt-get upgrade -y && \
-  apt-get install -y locales vim net-tools && \
-  apt-get clean
+RUN sed -i '/repo.mysql.com/d' /etc/apt/sources.list /etc/apt/sources.list.d/* || true && \
+    sed -i 's/deb.debian.org/mirrors.aliyun.com/g;s/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+    apt-get update && \
+    apt-get install -y locales vim net-tools && \
+    apt-get clean
 
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
   echo Asia/Shanghai > /etc/timezone && \

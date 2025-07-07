@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cxr29/log"
 	"github.com/cxr29/tiny"
 	v1 "github.com/erda-project/mysql-operator/api/v1"
+	log "github.com/sirupsen/logrus"
 )
 
 func (mylet *Mylet) _Run_SQL(ctx *tiny.Context) {
@@ -187,7 +187,7 @@ func (mylet *Mylet) ExecFile(username, password, dbname, f string) error {
 		"MYSQL_FILE=" + f,
 	}
 
-	log.Infoln(username, "run", dbname, "sql", f)
+	log.Info(username, "run", dbname, "sql", f)
 	return cmd.Run()
 }
 
