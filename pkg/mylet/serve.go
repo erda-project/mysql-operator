@@ -155,8 +155,8 @@ func (mylet *Mylet) CollectLocalStatus() v1.MysqlSoloStatus {
 		status.Color = v1.Red
 		mylet.hangCount++
 	}
-	// 不再设置 hang 字段
-	log.Infof("[CollectLocalStatus] id=%d, dsn=%s, color=%s", id, dsn, status.Color)
+
+	log.Infof("[CollectLocalStatus] id=%d, color=%s", id, status.Color)
 	return status
 }
 
