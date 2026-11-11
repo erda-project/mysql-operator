@@ -1,5 +1,5 @@
-ARG ARCH=amd64
-FROM registry.erda.cloud/k4s/$ARCH/golang:1.17-buster AS builder
+ARG TARGETARCH=amd64
+FROM registry.erda.cloud/k4s/$TARGETARCH/golang:1.17-buster AS builder
 
 WORKDIR /workspace
 
@@ -11,31 +11,19 @@ COPY go.mod go.mod
 COPY go.sum go.sum
 RUN GOPROXY=https://goproxy.cn,direct CGO_ENABLED=0 GOOS=linux go build -a -o mylet ./cmd/mylet/
 
-FROM registry.erda.cloud/k4s/$ARCH/mysql:8.0.38
+FROM percona/percona-xtrabackup:8.0.35 AS xtrabackup
+
+FROM mysql:8.0.40
 
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
   echo Asia/Shanghai > /etc/timezone
 
-RUN set -eux; \
-    touch /etc/apt/sources.list &&\
-    sed -i 's/deb.debian.org/mirrors.aliyun.com/g;s/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
-    apt-get update; \
-    apt-get install -y --no-install-recommends \
-        curl \
-        procps \
-        iproute2 \
-        net-tools \
-        less \
-        lsof \
-        bash; \
-    curl -fSL -o /tmp/xtrabackup.deb "http://erda-project.oss-cn-hangzhou.aliyuncs.com/erda-addons/percona-xtrabackup-80_8.0.35-34-1.bookworm_$(uname -m).deb"; \
-    apt-get install -y /tmp/xtrabackup.deb; \
-    rm -f /tmp/xtrabackup.deb; \
-    apt-get clean; \
-    rm -rf /var/lib/apt/lists/*
-
 WORKDIR /
 COPY --from=builder /workspace/mylet .
+COPY --from=xtrabackup /lib64/libprocps.so.8* /lib64/
+COPY --from=xtrabackup /usr/lib/private /usr/lib/private
+COPY --from=xtrabackup /usr/bin/xtrabackup /usr/bin/xtrabackup
+RUN ldconfig
 VOLUME /mydir
 EXPOSE 3306 33080
 USER mysql:mysql

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	corev1 "k8s.io/api/core/v1"
@@ -17,6 +18,8 @@ const (
 	ModeClassic = "Classic"
 	ModeSingle  = "Single"
 	ModeMulti   = "Multi"
+
+	myletImageRepository = "registry.erda.cloud/erda-addons/mylet"
 )
 
 func (r *Mysql) Default() {
@@ -88,7 +91,15 @@ func (r *Mysql) Default() {
 	}
 
 	if r.Spec.Image == "" {
-		r.Spec.Image = "registry.erda.cloud/erda-addons/mylet:" + r.Spec.Version
+		switch r.Spec.Version {
+		case "v8.0":
+			r.Spec.Image = myletImageRepository + ":8.0.40"
+		default:
+			r.Spec.Image = myletImageRepository + ":" + r.Spec.Version
+		}
+	} else if r.Spec.Version == "v8.0" &&
+		strings.HasPrefix(r.Spec.Image, "registry.erda.cloud/erda/mylet:") {
+		r.Spec.Image = myletImageRepository + ":8.0.40"
 	}
 	if r.Spec.ImagePullPolicy == "" {
 		r.Spec.ImagePullPolicy = corev1.PullIfNotPresent

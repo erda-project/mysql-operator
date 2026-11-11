@@ -102,6 +102,11 @@ func (g *MysqlGroup) Start() {
 func (g *MysqlGroup) Diff(mysql *v1.Mysql) error {
 	changed := 0
 
+	if g.Spec.Version != mysql.Spec.Version {
+		changed++
+		g.Spec.Version = mysql.Spec.Version
+	}
+
 	// Reload changes
 	if g.Spec.PrimaryMode != mysql.Spec.PrimaryMode ||
 		g.Spec.Primaries != mysql.Spec.Primaries ||
