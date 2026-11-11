@@ -1,5 +1,9 @@
-ARG TARGETARCH=amd64
-FROM registry.erda.cloud/k4s/$TARGETARCH/golang:1.17-buster AS builder
+ARG TARGETOS
+ARG TARGETARCH
+FROM --platform=$BUILDPLATFORM registry.erda.cloud/k4s/amd64/golang:1.17-buster AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /workspace
 
@@ -9,7 +13,7 @@ COPY pkg/ pkg/
 COPY cmd/ cmd/
 COPY go.mod go.mod
 COPY go.sum go.sum
-RUN GOPROXY=https://goproxy.cn,direct CGO_ENABLED=0 GOOS=linux go build -a -o mylet ./cmd/mylet/
+RUN GOPROXY=https://goproxy.cn,direct CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -a -o mylet ./cmd/mylet/
 
 FROM registry.erda.cloud/k4s/percona-xtrabackup:8.0.35 AS xtrabackup
 

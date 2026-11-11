@@ -18,8 +18,9 @@ docker buildx build \
   --push .
 ```
 
-构建参数 `TARGETARCH` 由 Buildx 按目标平台自动设置，用于选择 ERDA 对应架构
-的 Go 构建镜像。MySQL 与 XtraBackup 使用 ERDA registry 中的双架构镜像：
+构建参数 `TARGETOS`、`TARGETARCH` 由 Buildx 按目标平台自动设置，用于在
+amd64 Go builder 中交叉编译对应架构的 `mylet`。MySQL 与 XtraBackup 使用
+ERDA registry 中的双架构镜像：
 
 ```text
 registry.erda.cloud/k4s/mysql:8.0.40
