@@ -32,7 +32,7 @@ registry.erda.cloud/k4s/percona-xtrabackup:8.0.35
 
 ```text
 registry.erda.cloud/erda-addons/mylet:8.0.40
-sha256:498ec6f4028f094d5be88e4b0345c95df5f0d446b17df5c83ce5704c3f631d70
+sha256:965714a5b650e76b8e26c85839f4ce689bfd3b0883d5c3e7ef80a2ea0720c4ed
 ```
 
 该清单包含 `linux/amd64` 和 `linux/arm64` 两个平台。
@@ -41,17 +41,17 @@ sha256:498ec6f4028f094d5be88e4b0345c95df5f0d446b17df5c83ce5704c3f631d70
 
 保持 CRD 和业务 CR 的版本值不变，operator 将 `v8.0` 映射到上述镜像。发布
 新的 operator 镜像
-`registry.erda.cloud/erda-addons/myctl:v1.2-20261111-9f9e8b6`：
+`registry.erda.cloud/erda-addons/myctl:v1.2-20261111-96675ac`：
 
 ```text
-sha256:065aa12a17a3f49c3ecdfffe818a4ae48067428cd3c365b16511c8901f7b3330
+sha256:5a092e8a31ef6e57a6c904b9a35c07784c43f60de000f23374cc7015def0b54c
 ```
 
 该 operator 镜像同时包含 `linux/amd64` 和 `linux/arm64` 两个平台。
 
 ```sh
 kubectl set image deployment/myctl \
-  myctl=registry.erda.cloud/erda-addons/myctl:v1.2-20261111-9f9e8b6
+  myctl=registry.erda.cloud/erda-addons/myctl:v1.2-20261111-96675ac
 kubectl rollout status deployment/myctl
 ```
 
