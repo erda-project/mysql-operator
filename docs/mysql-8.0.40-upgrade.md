@@ -33,7 +33,7 @@ registry.erda.cloud/k4s/percona-xtrabackup:8.0.35
 
 ```text
 registry.erda.cloud/erda-addons/mylet:8.0.40
-sha256:965714a5b650e76b8e26c85839f4ce689bfd3b0883d5c3e7ef80a2ea0720c4ed
+sha256:19d566c3e25e68ca8b6661960432b326691160dbe42ed7a5cac14aef3c0fc106
 ```
 
 该清单包含 `linux/amd64` 和 `linux/arm64` 两个平台。
