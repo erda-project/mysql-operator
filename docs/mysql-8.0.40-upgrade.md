@@ -35,17 +35,17 @@ sha256:498ec6f4028f094d5be88e4b0345c95df5f0d446b17df5c83ce5704c3f631d70
 
 保持 CRD 和业务 CR 的版本值不变，operator 将 `v8.0` 映射到上述镜像。发布
 新的 operator 镜像
-`registry.erda.cloud/erda-addons/myctl:v1.2-mysql-8.0.40`：
+`registry.erda.cloud/erda-addons/myctl:v1.2-20261111-9f9e8b6`：
 
 ```text
-sha256:3f498461cac73d567d61fe032807a7a4da08bc80218c32cd6f7dc5175976b1f0
+sha256:065aa12a17a3f49c3ecdfffe818a4ae48067428cd3c365b16511c8901f7b3330
 ```
 
 该 operator 镜像同时包含 `linux/amd64` 和 `linux/arm64` 两个平台。
 
 ```sh
 kubectl set image deployment/myctl \
-  myctl=registry.erda.cloud/erda-addons/myctl:v1.2-mysql-8.0.40
+  myctl=registry.erda.cloud/erda-addons/myctl:v1.2-20261111-9f9e8b6
 kubectl rollout status deployment/myctl
 ```
 
