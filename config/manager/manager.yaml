@@ -35,7 +35,7 @@ spec:
             - /myctl
           args:
             - --leader-elect
-          image: ${IMAGE_REGISTRY}/erda-addons/myctl:v1.1
+          image: ${IMAGE_REGISTRY}/erda-addons/myctl:v1.2-20261111-96675ac
           imagePullPolicy: ${IMAGE_PULL_POLICY}
           env:
             - name: HTTP_ADDR
