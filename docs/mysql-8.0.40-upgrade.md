@@ -19,8 +19,14 @@ docker buildx build \
 ```
 
 构建参数 `TARGETARCH` 由 Buildx 按目标平台自动设置，用于选择 ERDA 对应架构
-的 Go 构建镜像。MySQL 使用同时提供 amd64/arm64 的官方 `mysql:8.0.40`，
-xtrabackup 从同时提供双架构的 `percona/percona-xtrabackup:8.0.35` 复制。
+的 Go 构建镜像。MySQL 与 XtraBackup 使用 ERDA registry 中的双架构镜像：
+
+```text
+registry.erda.cloud/k4s/mysql:8.0.40
+registry.erda.cloud/k4s/percona-xtrabackup:8.0.35
+```
+
+这两个镜像已完整复制官方多架构清单及对应 layer，不依赖 Docker Hub。
 
 已构建并推送：
 

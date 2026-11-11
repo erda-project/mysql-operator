@@ -11,9 +11,9 @@ COPY go.mod go.mod
 COPY go.sum go.sum
 RUN GOPROXY=https://goproxy.cn,direct CGO_ENABLED=0 GOOS=linux go build -a -o mylet ./cmd/mylet/
 
-FROM percona/percona-xtrabackup:8.0.35 AS xtrabackup
+FROM registry.erda.cloud/k4s/percona-xtrabackup:8.0.35 AS xtrabackup
 
-FROM mysql:8.0.40
+FROM registry.erda.cloud/k4s/mysql:8.0.40
 
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
   echo Asia/Shanghai > /etc/timezone
